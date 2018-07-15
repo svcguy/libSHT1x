@@ -16,9 +16,7 @@
 */
 
 #include "sht1x.h"
-#include "main.h"
-#include "gpio.h"
-#include "stm32f1xx_hal.h"
+#include "delay_us.h"
 
 // *********************************************************
 // Private function prototypes
@@ -43,81 +41,57 @@ int8_t      sht1x_measure( uint8_t *value, uint8_t *checksum, uint8_t mode );
 #define D2  (+39.65f)           // for degC @ 3.3V
 
 // *********************************************************
-// Configs for the DAT pin for faster switching
+// Pins and pin configs
 // *********************************************************
+GPIO_TypeDef _clkPort, _datPort;
+uint16_t _clkPin, _datPin;
 GPIO_InitTypeDef shtDatIsOutput;
 GPIO_InitTypeDef shtDatIsInput;
 
 int8_t sht1x_write_byte( uint8_t value )
 // writes a byte on the Sensibus and checks the acknowledge 
 {
-    uint8_t i, x;
+    uint8_t i;
     uint8_t error = 0;
 
     // Setup DAT pin for output
-    HAL_GPIO_Init( SHT_DAT_GPIO_Port, &shtDatIsOutput );
+    HAL_GPIO_Init( _datPort, &shtDatIsOutput );
 
     for( i = 0x80; i > 0; i/=2 )
     {   // Shift Bit for masking
         if( i & value )
         {   // Bit is high
-            HAL_GPIO_WritePin( SHT_DAT_GPIO_Port, SHT_DAT_Pin, GPIO_PIN_SET );
+            HAL_GPIO_WritePin( _datPort, _datPin, GPIO_PIN_SET );
         }
         else
         {   // Bit is low
-            HAL_GPIO_WritePin( SHT_DAT_GPIO_Port, SHT_DAT_Pin, GPIO_PIN_RESET );
-        }
-        
+            HAL_GPIO_WritePin( _datPort, _datPin, GPIO_PIN_RESET );
+        }        
         // Observe setup time
-        for( x = 0; x < SETUPHOLDCYCLES; x++ )
-        {
-            asm("NOP");
-        }
-
+        DWT_Delay_us(SETUP);
         // SCK = 1
-        HAL_GPIO_WritePin( SHT_CLK_GPIO_Port, SHT_CLK_Pin, GPIO_PIN_SET );
-        
+        HAL_GPIO_WritePin( _clkPort, _clkPin, GPIO_PIN_SET );        
         // Pulsewidth ~5us
-        for( x = 0; x < PULSEWIDTHCYCLES; x++ )
-        {
-            asm("NOP");
-        }
-
+        DWT_Delay_us(PULSE);
         // SCK = 0
-        HAL_GPIO_WritePin( SHT_CLK_GPIO_Port, SHT_CLK_Pin, GPIO_PIN_RESET );
-
+        HAL_GPIO_WritePin( _clkPort, _clkPin, GPIO_PIN_RESET );
         // Observe hold time
-        for( x = 0; x < SETUPHOLDCYCLES; x++ )
-        {
-            asm("NOP");
-        }
+        DWT_Delay_us(HOLD);
     }
     // CLK #9 for ack
-    HAL_GPIO_WritePin( SHT_CLK_GPIO_Port, SHT_CLK_Pin, GPIO_PIN_SET );
-
+    HAL_GPIO_WritePin( _clkPort, _clkPin, GPIO_PIN_SET );
     // Release data line
-    HAL_GPIO_Init( SHT_DAT_GPIO_Port, &shtDatIsInput );
-
+    HAL_GPIO_Init( _datPort, &shtDatIsInput );
     // Observe setup time
-    for( x = 0; x < SETUPHOLDCYCLES; x++ )
-    {
-        asm("NOP");
-    }
-
+    DWT_Delay_us(SETUP);
     // Check ACK
-    error = HAL_GPIO_ReadPin( SHT_DAT_GPIO_Port, SHT_DAT_Pin );
-
+    error = HAL_GPIO_ReadPin( _datPort, _datPin );
     // Observe hold time
-    for( x = 0; x < SETUPHOLDCYCLES; x++ )
-    {
-        asm("NOP");
-    }
-
+    DWT_Delay_us(HOLD);
     // SCK = 0
-    HAL_GPIO_WritePin( SHT_CLK_GPIO_Port, SHT_CLK_Pin, GPIO_PIN_RESET );
-
+    HAL_GPIO_WritePin( _clkPort, _clkPin, GPIO_PIN_RESET );
     // Check ACK
-    error = HAL_GPIO_ReadPin( SHT_DAT_GPIO_Port, SHT_DAT_Pin );
+    error = HAL_GPIO_ReadPin( _datPort, _datPin );
 
     return error;
 }
@@ -125,74 +99,46 @@ int8_t sht1x_write_byte( uint8_t value )
 int8_t sht1x_read_byte( uint8_t ack )
 // reads a byte form the Sensibus and gives an acknowledge in case of "ack=1"
 {
-    uint8_t i, x;
+    uint8_t i;
     uint8_t val = 0;
 
     // Release Data Line
-    HAL_GPIO_Init( SHT_DAT_GPIO_Port, &shtDatIsInput );
+    HAL_GPIO_Init( _datPort, &shtDatIsInput );
 
     for( i = 0x80; i > 0; i /= 2 )
     {   // Shift bit for masking
         // SCK = 1
-        HAL_GPIO_WritePin( SHT_CLK_GPIO_Port, SHT_CLK_Pin, GPIO_PIN_SET );
-
+        HAL_GPIO_WritePin( _clkPort, _clkPin, GPIO_PIN_SET );
         // Observe setup/hold time
-        for( x = 0; x < SETUPHOLDCYCLES; x++ )
-        {
-            asm("NOP");
-        }
-
+        DWT_Delay_us(SETUP);
         // Read bit
-        if( HAL_GPIO_ReadPin( SHT_DAT_GPIO_Port, SHT_DAT_Pin ) )
+        if( HAL_GPIO_ReadPin( _datPort, _datPin ) )
         {
             val = val | i;
         }
-
         // Pulsewidth ~5us
-        for( x = 0; x < PULSEWIDTHCYCLES; x++ )
-        {
-            asm("NOP");
-        }        
-
+        DWT_Delay_us(PULSE);
         // SCK = 0
-        HAL_GPIO_WritePin( SHT_CLK_GPIO_Port, SHT_CLK_Pin, GPIO_PIN_RESET );
-
+        HAL_GPIO_WritePin( _clkPort, _clkPin, GPIO_PIN_RESET );
         // Pulsewidth ~5us
-        for( x = 0; x < PULSEWIDTHCYCLES - SETUPHOLDCYCLES; x++ )
-        {
-            asm("NOP");
-        }
+        DWT_Delay_us(PULSE);
     }
 
     //in case of "ack==1" pull down DATA-Line
-    HAL_GPIO_Init( SHT_DAT_GPIO_Port, &shtDatIsOutput );
-    HAL_GPIO_WritePin( SHT_DAT_GPIO_Port, SHT_DAT_Pin, !ack );
+    HAL_GPIO_Init( _datPort, &shtDatIsOutput );
+    HAL_GPIO_WritePin( _datPort, _datPin, !ack );
     // Observe setup/hold time
-    for( x = 0; x < SETUPHOLDCYCLES; x++ )
-    {
-        asm("NOP");
-    }
-
+    DWT_Delay_us(SETUP);
     // CLK #9 for ack, SCK=1
-    HAL_GPIO_WritePin( SHT_CLK_GPIO_Port, SHT_CLK_Pin, GPIO_PIN_SET );
-
+    HAL_GPIO_WritePin( _clkPort, _clkPin, GPIO_PIN_SET );
     // Pulsewidth ~5us
-    for( x = 0; x < PULSEWIDTHCYCLES; x++ )
-    {
-        asm("NOP");
-    }
-
+    DWT_Delay_us(PULSE);
     // SCK=0
-    HAL_GPIO_WritePin( SHT_CLK_GPIO_Port, SHT_CLK_Pin, GPIO_PIN_RESET );
-
+    HAL_GPIO_WritePin( _clkPort, _clkPin, GPIO_PIN_RESET );
     // Observe hold time
-    for( x = 0; x < SETUPHOLDCYCLES; x++ )
-    {
-        asm("NOP");
-    }
-
+    DWT_Delay_us(HOLD);
     // Release Data Line
-    HAL_GPIO_Init( SHT_DAT_GPIO_Port, &shtDatIsInput );
+    HAL_GPIO_Init( _datPort, &shtDatIsInput );
     
     return val;
 }
@@ -204,69 +150,36 @@ void sht1x_transstart( void )
 //           ___     ___
 // SCK : ___|   |___|   |______
 {
-    uint8_t x;
-
     // Initial state
-    HAL_GPIO_Init( SHT_DAT_GPIO_Port, &shtDatIsOutput );
+    HAL_GPIO_Init( _datPort, &shtDatIsOutput );
     // DAT=1
-    HAL_GPIO_WritePin( SHT_DAT_GPIO_Port, SHT_DAT_Pin, GPIO_PIN_SET );
+    HAL_GPIO_WritePin( _datPort, _datPin, GPIO_PIN_SET );
     // SCK=0
-    HAL_GPIO_WritePin( SHT_CLK_GPIO_Port, SHT_CLK_Pin, GPIO_PIN_RESET );
-
+    HAL_GPIO_WritePin( _clkPort, _clkPin, GPIO_PIN_RESET );
     // Observe setup/hold time
-    for( x = 0; x < SETUPHOLDCYCLES; x++ )
-    {
-        asm("NOP");
-    }
-
+    DWT_Delay_us(SETUP);
     // SCK=1
-    HAL_GPIO_WritePin( SHT_CLK_GPIO_Port, SHT_CLK_Pin, GPIO_PIN_SET );
-
+    HAL_GPIO_WritePin( _clkPort, _clkPin, GPIO_PIN_SET );
     // Observe setup/hold time
-    for( x = 0; x < SETUPHOLDCYCLES; x++ )
-    {
-        asm("NOP");
-    }
-
+    DWT_Delay_us(HOLD);
     // DAT=0
-    HAL_GPIO_WritePin( SHT_DAT_GPIO_Port, SHT_DAT_Pin, GPIO_PIN_RESET );
-
+    HAL_GPIO_WritePin( _datPort, _datPin, GPIO_PIN_RESET );
     // Observe setup/hold time
-    for( x = 0; x < SETUPHOLDCYCLES; x++ )
-    {
-        asm("NOP");
-    }
-
+    DWT_Delay_us(SETUP);
     // SCK=0
-    HAL_GPIO_WritePin( SHT_CLK_GPIO_Port, SHT_CLK_Pin, GPIO_PIN_RESET );
-
+    HAL_GPIO_WritePin( _clkPort, _clkPin, GPIO_PIN_RESET );
     // Pulsewidth ~5us
-    for( x = 0; x < PULSEWIDTHCYCLES; x++ )
-    {
-        asm("NOP");
-    }
-
+    DWT_Delay_us(PULSE);
     // SCK=1
-    HAL_GPIO_WritePin( SHT_CLK_GPIO_Port, SHT_CLK_Pin, GPIO_PIN_SET );
-
+    HAL_GPIO_WritePin( _clkPort, _clkPin, GPIO_PIN_SET );
     // Observe setup/hold time
-    for( x = 0; x < SETUPHOLDCYCLES; x++ )
-    {
-        asm("NOP");
-    }
-
+    DWT_Delay_us(SETUP);
     // DAT=1
-    HAL_GPIO_WritePin( SHT_DAT_GPIO_Port, SHT_DAT_Pin, GPIO_PIN_SET );
-
+    HAL_GPIO_WritePin( _datPort, _datPin, GPIO_PIN_SET );
     // Observe setup/hold time
-    for( x = 0; x < SETUPHOLDCYCLES; x++ )
-    {
-        asm("NOP");
-    }
-
+    DWT_Delay_us(HOLD);
     // SCK=0
-    HAL_GPIO_WritePin( SHT_CLK_GPIO_Port, SHT_CLK_Pin, GPIO_PIN_RESET );
-
+    HAL_GPIO_WritePin( _clkPort, _clkPin, GPIO_PIN_RESET );
 }
 
 void sht1x_connectionreset( void )
@@ -276,30 +189,26 @@ void sht1x_connectionreset( void )
 //          _    _    _    _    _    _    _    _    _        ___     ___
 // SCK : __| |__| |__| |__| |__| |__| |__| |__| |__| |______|   |___|   |______
 {
-    uint8_t i, x;
+    uint8_t i;
 
     // Initial state
-    HAL_GPIO_Init( SHT_DAT_GPIO_Port, &shtDatIsOutput );
+    HAL_GPIO_Init( _datPort, &shtDatIsOutput );
     // DAT=1
-    HAL_GPIO_WritePin( SHT_DAT_GPIO_Port, SHT_DAT_Pin, GPIO_PIN_SET );
+    HAL_GPIO_WritePin( _datPort, _datPin, GPIO_PIN_SET );
     // SCK=0
-    HAL_GPIO_WritePin( SHT_CLK_GPIO_Port, SHT_CLK_Pin, GPIO_PIN_RESET );
+    HAL_GPIO_WritePin( _clkPort, _clkPin, GPIO_PIN_RESET );
 
     // 9 SCK Cycles
     for( i = 0; i < 9; i++ )
     {
-        HAL_GPIO_WritePin( SHT_CLK_GPIO_Port, SHT_CLK_Pin, GPIO_PIN_SET );
+        // SCK = 1
+        HAL_GPIO_WritePin( _clkPort, _clkPin, GPIO_PIN_SET );
         // Pulsewidth ~5us
-        for( x = 0; x < PULSEWIDTHCYCLES; x++ )
-        {
-            asm("NOP");
-        }
-        HAL_GPIO_WritePin( SHT_CLK_GPIO_Port, SHT_CLK_Pin, GPIO_PIN_RESET );
+        DWT_Delay_us(PULSE);
+        // SCK = 0
+        HAL_GPIO_WritePin( _clkPort, _clkPin, GPIO_PIN_RESET );
         // Pulsewidth ~5us
-        for( x = 0; x < PULSEWIDTHCYCLES; x++ )
-        {
-            asm("NOP");
-        }
+        DWT_Delay_us(PULSE);
     }
 
     // Transmission Start
@@ -313,10 +222,8 @@ int8_t sht1x_softreset( void )
 
     // Reset communication
     sht1x_connectionreset();
-
     // Send RESET command
     error = sht1x_write_byte( RESET );
-
     //error=1 in case of no response form the sensor
     return error;
 }
@@ -324,39 +231,22 @@ int8_t sht1x_softreset( void )
 int8_t sht1x_read_statusreg( uint8_t *value, uint8_t *checksum )
 // reads the status register with checksum (8-bit)
 {
-    uint8_t x;
     uint8_t error = 0;
 
     // Transmission Start
     sht1x_transstart();
-
     // Small delay
-    for( x = 0; x < DELAYCYCLES; x++ )
-    {
-        asm("NOP");
-    }
-
+    DWT_Delay_us(SMALL_DELAY);
     // Send command to sensor
     error = sht1x_write_byte( STATUS_REG_R );
-
     // Small delay
-    for( x = 0; x < DELAYCYCLES; x++ )
-    {
-        asm("NOP");
-    }
-    
+    DWT_Delay_us(SMALL_DELAY);    
     // Read status register (8bit)
     *value = sht1x_read_byte( ACK );
-
     // Small delay
-    for( x = 0; x < DELAYCYCLES; x++ )
-    {
-        asm("NOP");
-    }
-
+    DWT_Delay_us(SMALL_DELAY);
     // Read checksum (8bit)
-    *checksum = sht1x_read_byte( NACK );
-
+    *checksum = sht1x_read_byte( NOACK );
     // error=1 in case of no response from sensor
     return error;
 }
@@ -364,30 +254,18 @@ int8_t sht1x_read_statusreg( uint8_t *value, uint8_t *checksum )
 int8_t sht1x_write_statusreg( uint8_t *value )
 // writes the status register with checksum (8-bit)
 {
-    uint8_t x;
     uint8_t error = 0;
 
     // Transmission Start
     sht1x_transstart();
-
     // Small delay
-    for( x = 0; x < DELAYCYCLES; x++ )
-    {
-        asm("NOP");
-    }
-
+    DWT_Delay_us(SMALL_DELAY);
     // Send command to sensor
     error += sht1x_write_byte( STATUS_REG_W );
-
     // Small delay
-    for( x = 0; x < DELAYCYCLES; x++ )
-    {
-        asm("NOP");
-    }
-
+    DWT_Delay_us(SMALL_DELAY);
     // Send value of status register
     error += sht1x_write_byte( *value );
-
     //error>=1 in case of no response form the sensor
     return error;
 }
@@ -400,7 +278,6 @@ int8_t sht1x_measure( uint8_t *value, uint8_t *checksum, uint8_t mode )
 
     // Transmission Start
     sht1x_transstart();
-
     // Send command to the sensor
     switch( mode )
     {
@@ -411,42 +288,66 @@ int8_t sht1x_measure( uint8_t *value, uint8_t *checksum, uint8_t mode )
             error += sht1x_write_byte( MEASURE_HUMI );
             break;
     }
-
     // Small delay
-    for( x = 0; x < DELAYCYCLES; x++ )
-    {
-        asm("NOP");
-    }
-
+    DWT_Delay_us(SMALL_DELAY);
     // Setup DAT as input
-    HAL_GPIO_Init( SHT_DAT_GPIO_Port, &shtDatIsInput );
-
+    HAL_GPIO_Init( _datPort, &shtDatIsInput );
     // Wait until sensor has finished the measurement
-    while( HAL_GPIO_ReadPin( SHT_DAT_GPIO_Port, SHT_DAT_Pin ) );
-
+    while( HAL_GPIO_ReadPin( _datPort, _datPin ) );
     // Read the first byte (MSB)
     *(value + 1) = sht1x_read_byte( ACK );
-
     // Read the second byte (LSB)
     *(value) = sht1x_read_byte( ACK );
-
     // Read the checksum
-    *checksum = sht1x_read_byte( NACK );
+    *checksum = sht1x_read_byte( NOACK );
 
     return error;
 }
 
-int8_t sht1x_init( void )
+int8_t sht1x_init( GPIO_TypeDef clkPort, uint16_t clkPin, GPIO_TypeDef datPort, uint16_t datPin )
 {
-    shtDatIsOutput.Pin = SHT_DAT_Pin;
+    int8_t error=0;
+
+    // Check and assign ports and pins
+    if( !clkPort )
+    {
+        error++;
+        return error
+    }
+    _clkPort = clkPort;
+    if( !clkPin )
+    {
+        error++;
+        return error
+    }
+    _clkPin = clkPin;
+    if( !datPort )
+    {
+        error++;
+        return error
+    }
+    _clkPort = clkPort;
+    if( !datPin )
+    {
+        error++;
+        return error
+    }
+    _clkPin = clkPin;
+
+    // Init delay_us
+    error += DWT_Delay_Init();
+    // Setup output pin configuration
+    shtDatIsOutput.Pin = _datPin;
     shtDatIsOutput.Mode = GPIO_MODE_OUTPUT_PP;
     shtDatIsOutput.Speed = GPIO_SPEED_FREQ_HIGH;
-
-    shtDatIsInput.Pin = SHT_DAT_Pin;    
+    // Setup input pin configuration
+    shtDatIsInput.Pin = _datPin;    
     shtDatIsInput.Mode = GPIO_MODE_INPUT;   
     shtDatIsInput.Speed = GPIO_SPEED_FREQ_HIGH;
+    // Soft reset
+    error += sht1x_softreset();
 
-    return( sht1x_softreset() );
+    return error;
 }
 
 uint8_t sht1x_getData( float *temp, float *humi )
@@ -467,7 +368,7 @@ uint8_t sht1x_getData( float *temp, float *humi )
     // Measure temperature
     error += sht1x_measure( rawTemp.c, &cSum, TEMP );
     // Delay
-    HAL_Delay(1);
+    DWT_Delay_us(100);
     // Measure humidity
     error += sht1x_measure( rawHumi.c, &cSum, HUMI );
     // Check for error
@@ -478,7 +379,6 @@ uint8_t sht1x_getData( float *temp, float *humi )
     // Convert to float
     rawTemp.f = (float)rawTemp.i;
     rawHumi.f = (float)rawHumi.i;
-
     //calc. temperature [°C] from 14 bit temp. ticks @ 3V3
     t_C = ( rawTemp.f * D1 ) - D2;
     //calc. humidity from ticks to [%RH]
@@ -494,7 +394,6 @@ uint8_t sht1x_getData( float *temp, float *humi )
     {
         rh_true=0.1;
     }
-
     //return temperature [°C]
     *temp = t_C;
     //return humidity[%RH]

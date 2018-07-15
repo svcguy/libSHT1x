@@ -20,14 +20,27 @@
 #define __sht1x_H
 
 #include <stdint.h>
+#include <math.h>
+
+// Using the HAL Version macro to determine the core family
+#ifdef __STM32F0xx_HAL_VERSION
+#include "stm32f1xx_hal.h"
+#endif /* __STM32F0xx_HAL_VERSION */
+#ifdef __STM32F1xx_HAL_VERSION
+#include "stm32f1xx_hal.h"
+#endif /* __STM32F1xx_HAL_VERSION */
+#ifdef __STM32F4xx_HAL_VERSION
+#include "stm32f4xx_hal.h"
+#endif /* __STM32F4xx_HAL_VERSION */
+#ifdef __STM32F7xx_HAL_VERSION
+#include "stm32f7xx_hal.h"
+#endif /* __STM32F7xx_HAL_VERSION */
 
 #ifdef USE_HAL_DRIVER
 #include "gpio.h"
 #else
-#error "The VEML6070 driver requires the use of STM32CubeMX HAL drivers"
+#error "The SHT1x driver requires the use of STM32CubeMX HAL drivers"
 #endif /* USE_HAL_DRIVER */
-
-#include <math.h>
 
 typedef union
 {
@@ -42,7 +55,7 @@ enum
     HUMI
 };
 
-#define NACK    0
+#define NOACK    0
 #define ACK     1
 
                             //adr  command  r/w
@@ -52,9 +65,10 @@ enum
 #define MEASURE_HUMI 0x05   //000   0010    1
 #define RESET        0x1e   //000   1111    0
 
-#define PULSEWIDTHCYCLES    50
-#define SETUPHOLDCYCLES     15
-#define DELAYCYCLES         100
+#define SETUP
+#define HOLD
+#define PULSE
+#define SMALL_DELAY
 
 #ifdef __cplusplus
  extern "C" {
@@ -65,7 +79,7 @@ enum
   * @param None
   * @retval 1 on successs, 0 on failure
   */
-int8_t sht1x_init( void );
+int8_t sht1x_init( GPIO_TypeDef clkPort, uint16_t clkPin, GPIO_TypeDef datPort, uint16_t datPin );
 
 /**
   * @brief Resets the sensor
