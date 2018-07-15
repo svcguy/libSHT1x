@@ -43,7 +43,7 @@ int8_t      sht1x_measure( uint8_t *value, uint8_t *checksum, uint8_t mode );
 // *********************************************************
 // Pins and pin configs
 // *********************************************************
-GPIO_TypeDef _clkPort, _datPort;
+GPIO_TypeDef *_clkPort, *_datPort;
 uint16_t _clkPin, _datPin;
 GPIO_InitTypeDef shtDatIsOutput;
 GPIO_InitTypeDef shtDatIsInput;
@@ -274,7 +274,6 @@ int8_t sht1x_measure( uint8_t *value, uint8_t *checksum, uint8_t mode )
 // makes a measurement (humidity/temperature) with checksum
 {
     uint8_t error=0;
-    uint8_t x;
 
     // Transmission Start
     sht1x_transstart();
@@ -304,35 +303,35 @@ int8_t sht1x_measure( uint8_t *value, uint8_t *checksum, uint8_t mode )
     return error;
 }
 
-int8_t sht1x_init( GPIO_TypeDef clkPort, uint16_t clkPin, GPIO_TypeDef datPort, uint16_t datPin )
+int8_t sht1x_init( GPIO_TypeDef *clkPort, uint16_t clkPin, GPIO_TypeDef *datPort, uint16_t datPin )
 {
     int8_t error=0;
 
     // Check and assign ports and pins
-    if( !clkPort )
+    if( clkPort == NULL )
     {
         error++;
-        return error
+        return error;
     }
     _clkPort = clkPort;
     if( !clkPin )
     {
         error++;
-        return error
+        return error;
     }
     _clkPin = clkPin;
-    if( !datPort )
+    if( datPort == NULL )
     {
         error++;
-        return error
+        return error;
     }
-    _clkPort = clkPort;
+    _datPort = datPort;
     if( !datPin )
     {
         error++;
-        return error
+        return error;
     }
-    _clkPin = clkPin;
+    _datPin = datPin;
 
     // Init delay_us
     error += DWT_Delay_Init();

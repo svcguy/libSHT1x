@@ -65,10 +65,10 @@ enum
 #define MEASURE_HUMI 0x05   //000   0010    1
 #define RESET        0x1e   //000   1111    0
 
-#define SETUP
-#define HOLD
-#define PULSE
-#define SMALL_DELAY
+#define SETUP         1UL
+#define HOLD          1UL
+#define PULSE         5UL
+#define SMALL_DELAY   20UL
 
 #ifdef __cplusplus
  extern "C" {
@@ -79,7 +79,7 @@ enum
   * @param None
   * @retval 1 on successs, 0 on failure
   */
-int8_t sht1x_init( GPIO_TypeDef clkPort, uint16_t clkPin, GPIO_TypeDef datPort, uint16_t datPin );
+int8_t sht1x_init( GPIO_TypeDef *clkPort, uint16_t clkPin, GPIO_TypeDef *datPort, uint16_t datPin );
 
 /**
   * @brief Resets the sensor
